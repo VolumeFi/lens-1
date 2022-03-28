@@ -9,6 +9,11 @@ import (
 	"github.com/spf13/viper"
 )
 
+const (
+	insecureFlag = "insecure"
+	addressFlag  = "address"
+)
+
 func peersFlag(cmd *cobra.Command, v *viper.Viper) *cobra.Command {
 	cmd.Flags().Bool("peers", false, "Comma-delimited list of peers to connect to for syncing")
 	v.BindPFlag("peers", cmd.Flags().Lookup("peers"))
@@ -34,11 +39,15 @@ func skipConfirm(cmd *cobra.Command, v *viper.Viper) *cobra.Command {
 }
 
 func gRPCFlags(cmd *cobra.Command, v *viper.Viper) *cobra.Command {
-	cmd.Flags().Bool("insecure", false, "skip TLS verification of gRPC server (TESTING USE ONLY)")
-	v.BindPFlag("insecure", cmd.Flags().Lookup("insecure"))
+	cmd.Flags().Bool(insecureFlag, false, "skip TLS verification of gRPC server (TESTING USE ONLY)")
+	if err := v.BindPFlag(insecureFlag, cmd.Flags().Lookup(insecureFlag)); err != nil {
+		panic(err)
+	}
 
-	cmd.Flags().String("address", "", "gRPC server address of form 'host:port'")
-	v.BindPFlag("address", cmd.Flags().Lookup("address"))
+	cmd.Flags().String(addressFlag, "", "gRPC server address of form 'host:port'")
+	if err := v.BindPFlag(addressFlag, cmd.Flags().Lookup(addressFlag)); err != nil {
+		panic(err)
+	}
 	return cmd
 }
 

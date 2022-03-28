@@ -28,3 +28,18 @@ func (e ChainNotFoundError) Error() string {
 		strings.Join(available, ", "),
 	)
 }
+
+type GRPCServiceNotFoundError struct {
+	Requested string
+	Available []string
+}
+
+func (e GRPCServiceNotFoundError) Error() string {
+	sort.Strings(e.Available)
+	// TODO: would be nice to suggest close matches here.
+	return fmt.Sprintf(
+		"no service %q found (available services: %s)",
+		e.Requested,
+		strings.Join(e.Available, ", "),
+	)
+}

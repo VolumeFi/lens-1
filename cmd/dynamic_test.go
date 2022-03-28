@@ -37,26 +37,70 @@ func TestDynamicListRoutes_AddressFlag(t *testing.T) {
 	require.Empty(t, res.Stderr.String())
 }
 
-func TestDynamicListRoutes_RejectBothChainAndAddress(t *testing.T) {
+func TestDynamicListRoutes_Validation(t *testing.T) {
 	t.Parallel()
 
 	sys := NewSystem(t)
 
-	res := sys.Run(zaptest.NewLogger(t), "dynamic", "list-routes", "cosmoshub", "--insecure", "--address", "server.invalid:80")
-	require.Error(t, res.Err)
-	require.Empty(t, res.Stdout.String())
-	require.Contains(t, res.Stderr.String(), "must provide exactly one of")
+	t.Run("provide chain name and address", func(t *testing.T) {
+		res := sys.Run(zaptest.NewLogger(t), "dynamic", "list-routes", "cosmoshub", "--insecure", "--address", "server.invalid:80")
+		require.Error(t, res.Err)
+		require.Empty(t, res.Stdout.String())
+		require.Contains(t, res.Stderr.String(), "must provide exactly one of")
+	})
+
+	t.Run("omit both chain name and address", func(t *testing.T) {
+		res := sys.Run(zaptest.NewLogger(t), "dynamic", "list-routes")
+		require.Error(t, res.Err)
+		require.Empty(t, res.Stdout.String())
+		require.Contains(t, res.Stderr.String(), "must provide exactly one of")
+	})
 }
 
-func TestDynamicListRoutes_RejectMissingChainAndAddress(t *testing.T) {
+func TestDynamicListMethods_ChainID(t *testing.T) {
 	t.Parallel()
 
 	sys := NewSystem(t)
 
-	res := sys.Run(zaptest.NewLogger(t), "dynamic", "list-routes")
-	require.Error(t, res.Err)
-	require.Empty(t, res.Stdout.String())
-	require.Contains(t, res.Stderr.String(), "must provide exactly one of")
+	gRPCAddr := runGRPCReflectionServer(t)
+
+	_ = sys.MustRun(t, "chains", "edit", "cosmoshub", "grpc-addr", gRPCAddr)
+
+	res := sys.MustRun(t, "dynamic", "list-methods", "cosmoshub", "grpc.channelz.v1.Channelz", "--insecure")
+	require.Equal(t, res.Stdout.String(), "GetTopChannels\nGetServers\nGetServer\nGetServerSockets\nGetChannel\nGetSubchannel\nGetSocket\n")
+	require.Empty(t, res.Stderr.String())
+}
+
+func TestDynamicListMethods_AddressFlag(t *testing.T) {
+	t.Parallel()
+
+	sys := NewSystem(t)
+
+	gRPCAddr := runGRPCReflectionServer(t)
+
+	res := sys.MustRun(t, "dynamic", "list-methods", "--address", gRPCAddr, "--insecure", "grpc.channelz.v1.Channelz")
+	require.Equal(t, res.Stdout.String(), "GetTopChannels\nGetServers\nGetServer\nGetServerSockets\nGetChannel\nGetSubchannel\nGetSocket\n")
+	require.Empty(t, res.Stderr.String())
+}
+
+func TestDynamicListMethods_Validation(t *testing.T) {
+	t.Parallel()
+
+	sys := NewSystem(t)
+
+	t.Run("provide chain name and address", func(t *testing.T) {
+		res := sys.Run(zaptest.NewLogger(t), "dynamic", "list-methods", "cosmoshub", "grpc.channelz.v1.Channelz", "--insecure", "--address", "server.invalid:80")
+		require.Error(t, res.Err)
+		require.Empty(t, res.Stdout.String())
+		require.Contains(t, res.Stderr.String(), "must provide exactly one of")
+	})
+
+	t.Run("omit both chain name and address", func(t *testing.T) {
+		res := sys.Run(zaptest.NewLogger(t), "dynamic", "list-methods", "grpc.channelz.v1.Channelz")
+		require.Error(t, res.Err)
+		require.Empty(t, res.Stdout.String())
+		require.Contains(t, res.Stderr.String(), "must provide exactly one of")
+	})
 }
 
 func runGRPCReflectionServer(t *testing.T) string {
