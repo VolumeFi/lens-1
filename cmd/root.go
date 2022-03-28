@@ -109,6 +109,7 @@ func NewRootCmd(log *zap.Logger, atom zap.AtomicLevel, o map[string]ClientOverri
 		txCmd(a),
 		versionCmd(),
 		airdropCmd(a),
+		dynamicCmd(a),
 	)
 
 	return rootCmd

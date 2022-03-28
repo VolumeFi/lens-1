@@ -33,6 +33,15 @@ func skipConfirm(cmd *cobra.Command, v *viper.Viper) *cobra.Command {
 	return cmd
 }
 
+func gRPCFlags(cmd *cobra.Command, v *viper.Viper) *cobra.Command {
+	cmd.Flags().Bool("insecure", false, "skip TLS verification of gRPC server (TESTING USE ONLY)")
+	v.BindPFlag("insecure", cmd.Flags().Lookup("insecure"))
+
+	cmd.Flags().String("address", "", "gRPC server address of form 'host:port'")
+	v.BindPFlag("address", cmd.Flags().Lookup("address"))
+	return cmd
+}
+
 var (
 	FlagFrom = "from"
 )
