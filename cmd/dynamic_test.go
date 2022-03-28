@@ -11,7 +11,7 @@ import (
 	"google.golang.org/grpc/reflection"
 )
 
-func TestDynamicListRoutes_ChainID(t *testing.T) {
+func TestDynamicListServices_ChainID(t *testing.T) {
 	t.Parallel()
 
 	sys := NewSystem(t)
@@ -20,37 +20,37 @@ func TestDynamicListRoutes_ChainID(t *testing.T) {
 
 	_ = sys.MustRun(t, "chains", "edit", "cosmoshub", "grpc-addr", gRPCAddr)
 
-	res := sys.MustRun(t, "dynamic", "list-routes", "cosmoshub", "--insecure")
+	res := sys.MustRun(t, "dynamic", "list-services", "cosmoshub", "--insecure")
 	require.Equal(t, res.Stdout.String(), "grpc.channelz.v1.Channelz\ngrpc.reflection.v1alpha.ServerReflection\n")
 	require.Empty(t, res.Stderr.String())
 }
 
-func TestDynamicListRoutes_AddressFlag(t *testing.T) {
+func TestDynamicListServices_AddressFlag(t *testing.T) {
 	t.Parallel()
 
 	sys := NewSystem(t)
 
 	gRPCAddr := runGRPCReflectionServer(t)
 
-	res := sys.MustRun(t, "dynamic", "list-routes", "--insecure", "--address", gRPCAddr)
+	res := sys.MustRun(t, "dynamic", "list-services", "--insecure", "--address", gRPCAddr)
 	require.Equal(t, res.Stdout.String(), "grpc.channelz.v1.Channelz\ngrpc.reflection.v1alpha.ServerReflection\n")
 	require.Empty(t, res.Stderr.String())
 }
 
-func TestDynamicListRoutes_Validation(t *testing.T) {
+func TestDynamicListServices_Validation(t *testing.T) {
 	t.Parallel()
 
 	sys := NewSystem(t)
 
 	t.Run("provide chain name and address", func(t *testing.T) {
-		res := sys.Run(zaptest.NewLogger(t), "dynamic", "list-routes", "cosmoshub", "--insecure", "--address", "server.invalid:80")
+		res := sys.Run(zaptest.NewLogger(t), "dynamic", "list-services", "cosmoshub", "--insecure", "--address", "server.invalid:80")
 		require.Error(t, res.Err)
 		require.Empty(t, res.Stdout.String())
 		require.Contains(t, res.Stderr.String(), "must provide exactly one of")
 	})
 
 	t.Run("omit both chain name and address", func(t *testing.T) {
-		res := sys.Run(zaptest.NewLogger(t), "dynamic", "list-routes")
+		res := sys.Run(zaptest.NewLogger(t), "dynamic", "list-services")
 		require.Error(t, res.Err)
 		require.Empty(t, res.Stdout.String())
 		require.Contains(t, res.Stderr.String(), "must provide exactly one of")

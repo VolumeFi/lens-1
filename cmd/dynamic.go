@@ -20,22 +20,22 @@ func dynamicCmd(a *appState) *cobra.Command {
 	}
 
 	cmd.AddCommand(
-		dynListRoutesCmd(a),
+		dynListServicesCmd(a),
 		dynListMethodsCmd(a),
 	)
 
 	return cmd
 }
 
-func dynListRoutesCmd(a *appState) *cobra.Command {
+func dynListServicesCmd(a *appState) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "list-routes [CHAIN_ID]",
-		Aliases: []string{"list", "l"},
-		Short:   "List remote gRPC endpoints on the specified chain",
+		Use:     "list-services [CHAIN_ID]",
+		Aliases: []string{"ls"},
+		Short:   "List remote gRPC services on the specified chain",
 		Args:    cobra.RangeArgs(0, 1),
 		Example: fmt.Sprintf(
-			`$ %s dynamic list-routes cosmoshub
-$ %s dynamic list-routes --address example.com:9090`,
+			`$ %s dynamic list-services cosmoshub
+$ %s dynamic list-services --address example.com:9090`,
 			appName, appName,
 		),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -63,14 +63,14 @@ $ %s dynamic list-routes --address example.com:9090`,
 				}
 			}
 
-			return dynamicListRoutes(cmd, a, gRPCAddr)
+			return dynamicListServices(cmd, a, gRPCAddr)
 		},
 	}
 
 	return gRPCFlags(cmd, a.Viper)
 }
 
-func dynamicListRoutes(cmd *cobra.Command, a *appState, addr string) error {
+func dynamicListServices(cmd *cobra.Command, a *appState, addr string) error {
 	conn, err := dialGRPC(cmd, a, addr)
 	if err != nil {
 		return err

@@ -29,6 +29,8 @@ func (e ChainNotFoundError) Error() string {
 	)
 }
 
+// GRPCServiceNotFoundError is used when a requested gRPC service does not exist.
+// Its error message includes the provided available services.
 type GRPCServiceNotFoundError struct {
 	Requested string
 	Available []string
