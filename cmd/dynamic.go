@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"net"
 	"strings"
 
 	"github.com/golang/protobuf/jsonpb"
@@ -312,19 +313,19 @@ func dynamicShowMessages(cmd *cobra.Command, a *appState, gRPCAddr, method strin
 
 func dynQueryCmd(a *appState) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "query",
+		Use:     "query CHAIN_NAME_OR_GRPC_ADDR SERVICE_NAME METHOD_NAME",
 		Aliases: []string{"q"},
-		Args:    cobra.ExactArgs(2),
+		Args:    cobra.ExactArgs(3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			gRPCAddr, err := cmd.Flags().GetString(addressFlag)
+			gRPCAddr, err := chooseGRPCAddr(a, args[0])
 			if err != nil {
 				return err
 			}
-			serviceName := args[0]
+			serviceName := args[1]
 			if serviceName == "" {
 				return fmt.Errorf("service name may not be empty")
 			}
-			methodName := args[1]
+			methodName := args[2]
 			if methodName == "" {
 				return fmt.Errorf("method name may not be empty")
 			}
@@ -418,29 +419,22 @@ func dynamicQuery(cmd *cobra.Command, a *appState, gRPCAddr, serviceName, method
 }
 
 func dynInspectCmd(a *appState) *cobra.Command {
-	const (
-		serviceFlag = "service"
-		methodFlag  = "method"
-	)
-
 	cmd := &cobra.Command{
-		Use:     "inspect",
+		Use:     "inspect CHAIN_NAME_OR_GRPC_ADDR [SERVICE_NAME [METHOD_NAME]]",
 		Aliases: []string{"i"},
-		Args:    cobra.ExactArgs(0),
+		Args:    cobra.RangeArgs(1, 3),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			gRPCAddr, err := cmd.Flags().GetString(addressFlag)
+			gRPCAddr, err := chooseGRPCAddr(a, args[0])
 			if err != nil {
 				return err
 			}
 
-			serviceName, err := cmd.Flags().GetString(serviceFlag)
-			if err != nil {
-				return err
+			var serviceName, methodName string
+			if len(args) > 1 {
+				serviceName = args[1]
 			}
-
-			methodName, err := cmd.Flags().GetString(methodFlag)
-			if err != nil {
-				return err
+			if len(args) > 2 {
+				methodName = args[2]
 			}
 
 			a.Log.Debug("Inspecting server", zap.String("addr", gRPCAddr))
@@ -449,11 +443,7 @@ func dynInspectCmd(a *appState) *cobra.Command {
 		},
 	}
 
-	cmd = gRPCFlags(cmd, a.Viper)
-
-	cmd.Flags().String(serviceFlag, "", "Name of gRPC service to inspect")
-	cmd.Flags().String(methodFlag, "", "Name of method within gRPC service to inspect")
-	return cmd
+	return gRPCFlags(cmd, a.Viper)
 }
 
 func dynamicInspect(cmd *cobra.Command, a *appState, gRPCAddr, serviceName, methodName string) error {
@@ -689,4 +679,23 @@ func (r reflectClientAnyResolver) Resolve(typeURL string) (proto.Message, error)
 	}
 
 	return d.AsProto(), nil
+}
+
+func chooseGRPCAddr(a *appState, addrOrChainName string) (string, error) {
+	if _, _, err := net.SplitHostPort(addrOrChainName); err == nil {
+		// Argument looks like a host:port, so just return that value.
+		return addrOrChainName, nil
+	}
+
+	chain, ok := a.Config.Chains[addrOrChainName]
+	if !ok {
+		return "", fmt.Errorf("%q did not look like host:port and no chain exists by that name", addrOrChainName)
+	}
+
+	gRPCAddr := chain.GRPCAddr
+	if gRPCAddr == "" {
+		return "", fmt.Errorf("no gRPC address set for chain %q", addrOrChainName)
+	}
+
+	return gRPCAddr, nil
 }
