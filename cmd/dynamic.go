@@ -315,7 +315,7 @@ func dynQueryCmd(a *appState) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "query CHAIN_NAME_OR_GRPC_ADDR SERVICE_NAME METHOD_NAME",
 		Aliases: []string{"q"},
-		Args:    cobra.ExactArgs(3),
+		Args:    withUsage(cobra.ExactArgs(3)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			gRPCAddr, err := chooseGRPCAddr(a, args[0])
 			if err != nil {
@@ -422,7 +422,7 @@ func dynInspectCmd(a *appState) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "inspect CHAIN_NAME_OR_GRPC_ADDR [SERVICE_NAME [METHOD_NAME]]",
 		Aliases: []string{"i"},
-		Args:    cobra.RangeArgs(1, 3),
+		Args:    withUsage(cobra.RangeArgs(1, 3)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			gRPCAddr, err := chooseGRPCAddr(a, args[0])
 			if err != nil {
