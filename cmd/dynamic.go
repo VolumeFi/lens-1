@@ -2,8 +2,11 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"strings"
 
+	"github.com/jhump/protoreflect/desc"
+	"github.com/jhump/protoreflect/desc/protoprint"
 	"github.com/jhump/protoreflect/grpcreflect"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -24,6 +27,7 @@ func dynamicCmd(a *appState) *cobra.Command {
 		dynListServicesCmd(a),
 		dynListMethodsCmd(a),
 		dynShowMessagesCmd(a),
+		dynInspectCmd(a),
 	)
 
 	return cmd
@@ -258,7 +262,8 @@ func dynamicShowMessages(cmd *cobra.Command, a *appState, gRPCAddr, method strin
 		return fmt.Errorf("failed to resolve service: %w", err)
 	}
 
-	m := d.FindMethodByName(serviceParts[len(serviceParts)-1])
+	methodName := serviceParts[len(serviceParts)-1]
+	m := d.FindMethodByName(methodName)
 
 	var msgs struct {
 		Input  map[string]interface{}
@@ -298,6 +303,240 @@ func dynamicShowMessages(cmd *cobra.Command, a *appState, gRPCAddr, method strin
 	writeJSON(cmd.OutOrStdout(), msgs)
 
 	return nil
+}
+
+func dynInspectCmd(a *appState) *cobra.Command {
+	const (
+		serviceFlag = "service"
+		methodFlag  = "method"
+	)
+
+	cmd := &cobra.Command{
+		Use:     "inspect",
+		Aliases: []string{"i"},
+		Args:    cobra.ExactArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			gRPCAddr, err := cmd.Flags().GetString(addressFlag)
+			if err != nil {
+				return err
+			}
+
+			serviceName, err := cmd.Flags().GetString(serviceFlag)
+			if err != nil {
+				return err
+			}
+
+			methodName, err := cmd.Flags().GetString(methodFlag)
+			if err != nil {
+				return err
+			}
+
+			a.Log.Debug("Inspecting server", zap.String("addr", gRPCAddr))
+
+			return dynamicInspect(cmd, a, gRPCAddr, serviceName, methodName)
+		},
+	}
+
+	cmd = gRPCFlags(cmd, a.Viper)
+
+	cmd.Flags().String(serviceFlag, "", "Name of gRPC service to inspect")
+	cmd.Flags().String(methodFlag, "", "Name of method within gRPC service to inspect")
+	return cmd
+}
+
+func dynamicInspect(cmd *cobra.Command, a *appState, gRPCAddr, serviceName, methodName string) error {
+	conn, err := dialGRPC(cmd, a, gRPCAddr)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	stub := rpb.NewServerReflectionClient(conn)
+	c := grpcreflect.NewClient(cmd.Context(), stub)
+	defer c.Reset()
+
+	pp := &protoprint.Printer{
+		SortElements:             true,
+		ForceFullyQualifiedNames: true,
+	}
+
+	if serviceName == "" {
+		a.Log.Debug("Listing all services")
+
+		services, err := c.ListServices()
+		if err != nil {
+			return fmt.Errorf("failed to list remote services: %w", err)
+		}
+
+		for _, svc := range services {
+			svcDesc, err := c.ResolveService(svc)
+			if err != nil {
+				a.Log.Info(
+					"Error resolving service",
+					zap.String("service_name", svcDesc.GetFullyQualifiedName()),
+					zap.Error(err),
+				)
+				continue
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), svcDesc.GetFullyQualifiedName())
+			continue
+
+			proto, err := pp.PrintProtoToString(svcDesc)
+			if err != nil {
+				a.Log.Info(
+					"Error converting to proto string",
+					zap.String("service_name", svcDesc.GetFullyQualifiedName()),
+					zap.Error(err),
+				)
+				continue
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), proto)
+		}
+
+		return nil
+	}
+
+	a.Log.Debug("Resolving requested service", zap.String("service_name", serviceName))
+	svcDesc, err := c.ResolveService(serviceName)
+	if err != nil {
+		a.Log.Info(
+			"Error resolving service",
+			zap.String("service_name", svcDesc.GetFullyQualifiedName()),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	if methodName == "" {
+		proto, err := pp.PrintProtoToString(svcDesc)
+		if err != nil {
+			a.Log.Info(
+				"Error converting to proto string",
+				zap.String("service_name", svcDesc.GetFullyQualifiedName()),
+				zap.Error(err),
+			)
+			return err
+		}
+		fmt.Fprintln(cmd.OutOrStdout(), proto)
+
+		return nil
+	}
+
+	a.Log.Debug("Resolving requested method", zap.String("service_name", serviceName), zap.String("method_name", methodName))
+	mDesc := svcDesc.FindMethodByName(methodName)
+	if mDesc == nil {
+		// TODO: return info about available methods
+		return fmt.Errorf("no method with name %q", methodName)
+	}
+
+	proto, err := pp.PrintProtoToString(mDesc)
+	if err != nil {
+		a.Log.Info(
+			"Error converting to proto string",
+			zap.String("service_name", svcDesc.GetFullyQualifiedName()),
+			zap.String("method_name", mDesc.GetFullyQualifiedName()),
+			zap.Error(err),
+		)
+		return err
+	}
+	fmt.Fprintln(cmd.OutOrStdout(), proto)
+
+	var s sources
+	if inType := mDesc.GetInputType(); inType != nil {
+		proto, err := pp.PrintProtoToString(inType)
+		if err != nil {
+			a.Log.Info(
+				"Error converting method input type to string",
+				zap.String("service_name", svcDesc.GetFullyQualifiedName()),
+				zap.String("method_name", mDesc.GetFullyQualifiedName()),
+				zap.Error(err),
+			)
+		} else {
+			fmt.Fprintln(cmd.OutOrStdout(), "// "+inType.GetFile().GetFullyQualifiedName())
+			fmt.Fprintln(cmd.OutOrStdout(), proto)
+
+			s = walkMessageType(inType, s)
+		}
+	}
+
+	if outType := mDesc.GetOutputType(); outType != nil {
+		proto, err := pp.PrintProtoToString(outType)
+		if err != nil {
+			a.Log.Info(
+				"Error converting method output type to string",
+				zap.String("service_name", svcDesc.GetFullyQualifiedName()),
+				zap.String("method_name", mDesc.GetFullyQualifiedName()),
+				zap.Error(err),
+			)
+		} else {
+			fmt.Fprintln(cmd.OutOrStdout(), "// "+outType.GetFile().GetFullyQualifiedName())
+			fmt.Fprintln(cmd.OutOrStdout(), proto)
+
+			s = walkMessageType(outType, s)
+		}
+	}
+
+	s.Print(a.Log, cmd.OutOrStdout(), pp)
+
+	return nil
+}
+
+// sources is a collection of descriptors.
+// It is a slice so iteration order when printing is maintained.
+type sources []desc.Descriptor
+
+// Contains iterates through the existing sources
+// and reports whether it already contains a descriptor matching d's fully qualified name.
+func (s sources) Contains(d desc.Descriptor) bool {
+	want := d.GetFullyQualifiedName()
+	for _, have := range s {
+		if have.GetFullyQualifiedName() == want {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (s sources) Print(log *zap.Logger, out io.Writer, pp *protoprint.Printer) {
+	for _, desc := range s {
+		proto, err := pp.PrintProtoToString(desc)
+		if err != nil {
+			log.Info(
+				"Error converting descriptor to string",
+				zap.String("fully_qualified_name", desc.GetFullyQualifiedName()),
+				zap.Error(err),
+			)
+			continue
+		}
+
+		fmt.Fprintf(out, "// %s (%s)\n", desc.GetFullyQualifiedName(), desc.GetFile().GetFullyQualifiedName())
+		fmt.Fprintln(out, proto)
+	}
+}
+
+func walkMessageType(msgDesc *desc.MessageDescriptor, s sources) sources {
+	for _, fDesc := range msgDesc.GetFields() {
+		if mDesc := fDesc.GetMessageType(); mDesc != nil {
+			if !s.Contains(mDesc) {
+				s = append(s, mDesc)
+				s = walkMessageType(mDesc, s)
+			}
+
+			continue
+		}
+
+		if eDesc := fDesc.GetEnumType(); eDesc != nil {
+			if !s.Contains(eDesc) {
+				s = append(s, eDesc)
+				// Enums are just lists of constants, so no need to descend into them.
+			}
+
+			continue
+		}
+	}
+
+	return s
 }
 
 func dialGRPC(cmd *cobra.Command, a *appState, addr string) (*grpc.ClientConn, error) {
