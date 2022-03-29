@@ -349,14 +349,32 @@ func dynamicQuery(cmd *cobra.Command, a *appState, gRPCAddr, serviceName, method
 
 	svcDesc, err := c.ResolveService(serviceName)
 	if err != nil {
-		// TODO: return GRPCServiceNotFoundError
+		if strings.Contains(err.Error(), "Service not found") {
+			// If we can list the available services, return a more useful error.
+			services, svcErr := c.ListServices()
+			if svcErr == nil {
+				return GRPCServiceNotFoundError{
+					Requested: serviceName,
+					Available: services,
+				}
+			}
+		}
+
 		return fmt.Errorf("failed to resolve service %q: %w", serviceName, err)
 	}
 
 	methodDesc := svcDesc.FindMethodByName(methodName)
 	if methodDesc == nil {
-		// TODO: return info about available methods
-		return fmt.Errorf("no method with name %q", methodName)
+		methodDescs := svcDesc.GetMethods()
+		methodNames := make([]string, len(methodDescs))
+		for i, md := range methodDescs {
+			methodNames[i] = md.GetName()
+		}
+		return fmt.Errorf(
+			"no method with name %q (available names: %s)",
+			methodName,
+			strings.Join(methodNames, ", "),
+		)
 	}
 
 	inMsgDesc := methodDesc.GetInputType() // TODO: check for nil input type?
