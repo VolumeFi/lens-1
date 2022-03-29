@@ -5,6 +5,8 @@ import (
 	"io"
 	"strings"
 
+	"github.com/golang/protobuf/jsonpb"
+	"github.com/golang/protobuf/proto"
 	"github.com/jhump/protoreflect/desc"
 	"github.com/jhump/protoreflect/desc/protoprint"
 	"github.com/jhump/protoreflect/dynamic"
@@ -384,7 +386,11 @@ func dynamicQuery(cmd *cobra.Command, a *appState, gRPCAddr, serviceName, method
 	if err != nil {
 		return fmt.Errorf("failed to convert output to dynamic message: %w", err)
 	}
-	j, err := dynOutput.MarshalJSON()
+
+	j, err := dynOutput.MarshalJSONPB(&jsonpb.Marshaler{
+		// For Any fields, resolve through the client.
+		AnyResolver: reflectClientAnyResolver{c: c},
+	})
 	if err != nil {
 		return fmt.Errorf("failed to serialize output message: %w", err)
 	}
@@ -648,4 +654,21 @@ func dialGRPC(cmd *cobra.Command, a *appState, addr string) (*grpc.ClientConn, e
 	}
 
 	return conn, nil
+}
+
+type reflectClientAnyResolver struct {
+	c *grpcreflect.Client
+}
+
+var _ jsonpb.AnyResolver = reflectClientAnyResolver{}
+
+func (r reflectClientAnyResolver) Resolve(typeURL string) (proto.Message, error) {
+	// Unclear if it is always safe to trim the leading slash here.
+	typeURL = strings.TrimPrefix(typeURL, "/")
+	d, err := r.c.ResolveMessage(typeURL)
+	if err != nil {
+		return nil, err
+	}
+
+	return d.AsProto(), nil
 }
