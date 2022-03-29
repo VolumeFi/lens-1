@@ -7,6 +7,8 @@ import (
 
 	"github.com/jhump/protoreflect/desc"
 	"github.com/jhump/protoreflect/desc/protoprint"
+	"github.com/jhump/protoreflect/dynamic"
+	"github.com/jhump/protoreflect/dynamic/grpcdynamic"
 	"github.com/jhump/protoreflect/grpcreflect"
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
@@ -28,6 +30,7 @@ func dynamicCmd(a *appState) *cobra.Command {
 		dynListMethodsCmd(a),
 		dynShowMessagesCmd(a),
 		dynInspectCmd(a),
+		dynQueryCmd(a),
 	)
 
 	return cmd
@@ -302,6 +305,91 @@ func dynamicShowMessages(cmd *cobra.Command, a *appState, gRPCAddr, method strin
 
 	writeJSON(cmd.OutOrStdout(), msgs)
 
+	return nil
+}
+
+func dynQueryCmd(a *appState) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:     "query",
+		Aliases: []string{"q"},
+		Args:    cobra.ExactArgs(2),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			gRPCAddr, err := cmd.Flags().GetString(addressFlag)
+			if err != nil {
+				return err
+			}
+			serviceName := args[0]
+			if serviceName == "" {
+				return fmt.Errorf("service name may not be empty")
+			}
+			methodName := args[1]
+			if methodName == "" {
+				return fmt.Errorf("method name may not be empty")
+			}
+
+			return dynamicQuery(cmd, a, gRPCAddr, serviceName, methodName)
+		},
+	}
+
+	return gRPCFlags(cmd, a.Viper)
+}
+
+func dynamicQuery(cmd *cobra.Command, a *appState, gRPCAddr, serviceName, methodName string) error {
+	conn, err := dialGRPC(cmd, a, gRPCAddr)
+	if err != nil {
+		return err
+	}
+	defer conn.Close()
+
+	stub := rpb.NewServerReflectionClient(conn)
+	c := grpcreflect.NewClient(cmd.Context(), stub)
+	defer c.Reset()
+
+	svcDesc, err := c.ResolveService(serviceName)
+	if err != nil {
+		// TODO: return GRPCServiceNotFoundError
+		return fmt.Errorf("failed to resolve service %q: %w", serviceName, err)
+	}
+
+	methodDesc := svcDesc.FindMethodByName(methodName)
+	if methodDesc == nil {
+		// TODO: return info about available methods
+		return fmt.Errorf("no method with name %q", methodName)
+	}
+
+	inMsgDesc := methodDesc.GetInputType() // TODO: check for nil input type?
+	input := dynamic.NewMessage(inMsgDesc)
+	stdin, err := io.ReadAll(cmd.InOrStdin())
+	if err != nil {
+		return fmt.Errorf("error reading stdin: %w", err)
+	}
+
+	if err := input.UnmarshalJSON(stdin); err != nil {
+		return fmt.Errorf("failed to marshal input into message of type %s: %w", inMsgDesc.GetFullyQualifiedName(), err)
+	}
+
+	dynClient := grpcdynamic.NewStub(conn)
+	if methodDesc.IsClientStreaming() || methodDesc.IsServerStreaming() {
+		return fmt.Errorf("TODO: handle client/server streaming")
+	}
+
+	output, err := dynClient.InvokeRpc(cmd.Context(), methodDesc, input)
+	if err != nil {
+		return fmt.Errorf("failed to invoke rpc: %w", err)
+	}
+
+	// TODO: There is probably a better way to marshal a protobuf message to JSON
+	// without converting it to a dynamic message first.
+	dynOutput, err := dynamic.AsDynamicMessage(output)
+	if err != nil {
+		return fmt.Errorf("failed to convert output to dynamic message: %w", err)
+	}
+	j, err := dynOutput.MarshalJSON()
+	if err != nil {
+		return fmt.Errorf("failed to serialize output message: %w", err)
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(), string(j))
 	return nil
 }
 
