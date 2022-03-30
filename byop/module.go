@@ -2,7 +2,6 @@ package byop
 
 import (
 	"encoding/json"
-	"sync"
 
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/codec"
@@ -18,17 +17,15 @@ import (
 var _ module.AppModuleBasic = Module{}
 
 type Module struct {
-	moduleName   string
-	registerOnce *sync.Once
+	moduleName string
 
 	msgs []proto.Message
 }
 
 func NewModule(moduleName string, msgs ...proto.Message) Module {
 	return Module{
-		moduleName:   moduleName,
-		registerOnce: &sync.Once{},
-		msgs:         msgs,
+		moduleName: moduleName,
+		msgs:       msgs,
 	}
 }
 
@@ -36,12 +33,10 @@ func (m Module) Name() string { return m.moduleName }
 
 // RegisterInterfaces is the only method that we care about.
 func (m Module) RegisterInterfaces(registry types.InterfaceRegistry) {
-	m.registerOnce.Do(func() {
-		registry.RegisterImplementations(
-			(*sdk.Msg)(nil),
-			m.msgs...,
-		)
-	})
+	registry.RegisterImplementations(
+		(*sdk.Msg)(nil),
+		m.msgs...,
+	)
 }
 func (m Module) RegisterLegacyAminoCodec(amino *codec.LegacyAmino) {}
 
