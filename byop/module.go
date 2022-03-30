@@ -29,15 +29,19 @@ func NewModule(moduleName string, msgs ...proto.Message) Module {
 	}
 }
 
-func (m Module) Name() string { return m.moduleName }
-
-// RegisterInterfaces is the only method that we care about.
+// RegisterInterfaces is the only method that we care about. It registers the
+// injected interfaces into the provided registry, so that it can be decoded.
 func (m Module) RegisterInterfaces(registry types.InterfaceRegistry) {
 	registry.RegisterImplementations(
 		(*sdk.Msg)(nil),
 		m.msgs...,
 	)
 }
+
+// All other methods below exist just to fulfill the module.AppModuleBasic interface.
+
+func (m Module) Name() string { return m.moduleName }
+
 func (m Module) RegisterLegacyAminoCodec(amino *codec.LegacyAmino) {}
 
 func (m Module) DefaultGenesis(codec.JSONCodec) json.RawMessage {
