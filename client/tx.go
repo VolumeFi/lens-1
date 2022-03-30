@@ -6,6 +6,8 @@ import (
 	"strings"
 
 	"github.com/avast/retry-go/v4"
+	abci "github.com/cometbft/cometbft/abci/types"
+	rpcclient "github.com/cometbft/cometbft/rpc/client"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/tx"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
@@ -16,8 +18,6 @@ import (
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
-	abci "github.com/cometbft/cometbft/abci/types"
-	rpcclient "github.com/cometbft/cometbft/rpc/client"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
