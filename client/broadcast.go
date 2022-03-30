@@ -6,15 +6,15 @@ import (
 	"fmt"
 	"time"
 
+	ctypes "github.com/cometbft/cometbft/rpc/core/types"
+	tmtypes "github.com/cometbft/cometbft/types"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
-	ctypes "github.com/cometbft/cometbft/rpc/core/types"
-	tmtypes "github.com/cometbft/cometbft/types"
 )
 
 const (
-	defaultBroadcastWaitTimeout = 10 * time.Minute
+	defaultBroadcastWaitTimeout = time.Minute
 	errUnknown                  = "unknown"
 )
 
@@ -66,7 +66,6 @@ func broadcastTx(
 	// need to investigate if this will leave the tx
 	// in the mempool or we can retry the broadcast at that
 	// point
-
 	syncRes, err := broadcaster.BroadcastTxSync(ctx, tx)
 	if err != nil {
 		if syncRes == nil {
