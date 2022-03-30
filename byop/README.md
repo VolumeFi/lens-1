@@ -1,4 +1,4 @@
-# BYOD
+# BYOP
 
 **B**ring **Y**our **O**wn **P**roto :)
 
