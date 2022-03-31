@@ -140,19 +140,18 @@ func (cc *ChainClient) PrepareFactory(txf tx.Factory) (tx.Factory, error) {
 		WithChainID(cc.Config.ChainID).
 		WithCodec(cc.Codec.Marshaler)
 
-	// Set the account number and sequence on the transaction factory and retry if fail
-	if err = retry.Do(func() error {
-		if err = txf.AccountRetriever().EnsureExists(cliCtx, from); err != nil {
-			return err
-		}
-		return err
-	}, RtyAtt, RtyDel, RtyErr); err != nil {
-		return txf, err
-	}
-
-	// TODO: why this code? this may potentially require another query when we don't want one
 	initNum, initSeq := txf.AccountNumber(), txf.Sequence()
+	// if num or seq are already set, don't set them again
 	if initNum == 0 || initSeq == 0 {
+		// Set the account number and sequence on the transaction factory and retry if fail
+		if err = retry.Do(func() error {
+			if err = txf.AccountRetriever().EnsureExists(cliCtx, from); err != nil {
+				return err
+			}
+			return err
+		}, RtyAtt, RtyDel, RtyErr); err != nil {
+			return txf, err
+		}
 		if err = retry.Do(func() error {
 			num, seq, err = txf.AccountRetriever().GetAccountNumberSequence(cliCtx, from)
 			if err != nil {
