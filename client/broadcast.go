@@ -74,6 +74,9 @@ func broadcastTx(
 		}
 		return nil, err
 	}
+	if syncRes.Code != 0 {
+		return nil, fmt.Errorf("unexpected result: %v: %w", syncRes, ErrUnexpectedNonZeroCode)
+	}
 
 	// TODO: maybe we need to check if the node has tx indexing enabled?
 	// if not, we need to find a new way to block until inclusion in a block
