@@ -76,7 +76,6 @@ func TestBroadcast(t *testing.T) {
 			broadcaster: fakeBroadcaster{
 				broadcastSync: func(_ context.Context, _ tmtypes.Tx) (*ctypes.ResultBroadcastTx, error) {
 					return &ctypes.ResultBroadcastTx{
-						Code: 1,
 						Hash: []byte(`123bob`),
 					}, nil
 				},
@@ -100,7 +99,6 @@ func TestBroadcast(t *testing.T) {
 			broadcaster: fakeBroadcaster{
 				broadcastSync: func(_ context.Context, _ tmtypes.Tx) (*ctypes.ResultBroadcastTx, error) {
 					return &ctypes.ResultBroadcastTx{
-						Code: 1,
 						Hash: []byte(`123bob`),
 					}, nil
 				},
