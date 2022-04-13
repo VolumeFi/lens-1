@@ -119,6 +119,17 @@ func TestBroadcast(t *testing.T) {
 			},
 			expectedErr: errExpected,
 		},
+		{
+			name: "broadcasting doesn't return an error but returns a non-zero code",
+			broadcaster: fakeBroadcaster{
+				broadcastSync: func(_ context.Context, _ tmtypes.Tx) (*ctypes.ResultBroadcastTx, error) {
+					return &ctypes.ResultBroadcastTx{
+						Code: 1337,
+					}, nil
+				},
+			},
+			expectedErr: ErrUnexpectedNonZeroCode,
+		},
 	} {
 		t.Run(tt.name, func(t *testing.T) {
 			duration := 1 * time.Second
