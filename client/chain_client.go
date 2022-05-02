@@ -90,6 +90,9 @@ func (cc *ChainClient) Init() error {
 }
 
 func (cc *ChainClient) GetKeyAddress() (sdk.AccAddress, error) {
+	done := cc.SetSDKContext()
+	defer done()
+
 	info, err := cc.Keybase.Key(cc.Config.Key)
 	if err != nil {
 		return nil, err
