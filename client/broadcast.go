@@ -2,20 +2,20 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
 	"time"
 
+	ctypes "github.com/cometbft/cometbft/rpc/core/types"
+	tmtypes "github.com/cometbft/cometbft/types"
 	codectypes "github.com/cosmos/cosmos-sdk/codec/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
-	"github.com/tendermint/tendermint/mempool"
-	ctypes "github.com/tendermint/tendermint/rpc/core/types"
-	tmtypes "github.com/tendermint/tendermint/types"
 )
 
 const (
-	defaultBroadcastWaitTimeout = 10 * time.Minute
+	defaultBroadcastWaitTimeout = time.Minute
+	errUnknown                  = "unknown"
 )
 
 func (cc *ChainClient) BroadcastTx(ctx context.Context, tx []byte) (*sdk.TxResponse, error) {
@@ -68,21 +68,26 @@ func broadcastTx(
 	// point
 	syncRes, err := broadcaster.BroadcastTxSync(ctx, tx)
 	if err != nil {
-		errRes := CheckTendermintError(err, tx)
-		if errRes != nil {
-			return errRes, nil
+		if syncRes == nil {
+			// There are some cases where BroadcastTxSync will return an error but the associated
+			// ResultBroadcastTx will be nil.
+			return nil, err
 		}
+		return &sdk.TxResponse{
+			Code:      syncRes.Code,
+			Codespace: syncRes.Codespace,
+			TxHash:    syncRes.Hash.String(),
+		}, err
+	}
+
+	// ABCIError will return an error other than "unknown" if syncRes.Code is a registered error in syncRes.Codespace
+	// This catches all of the sdk errors https://github.com/cosmos/cosmos-sdk/blob/f10f5e5974d2ecbf9efc05bc0bfe1c99fdeed4b6/types/errors/errors.go
+	err = errors.Unwrap(sdkerrors.ABCIError(syncRes.Codespace, syncRes.Code, "error broadcasting transaction"))
+	if err.Error() != errUnknown {
 		return nil, err
 	}
 	if syncRes.Code != 0 {
 		return nil, fmt.Errorf("unexpected result: %v: %w", syncRes, ErrUnexpectedNonZeroCode)
-	}
-
-	if syncRes.Codespace == sdkerrors.RootCodespace && syncRes.Code == sdkerrors.ErrWrongSequence.ABCICode() {
-		// When the transaction was being built, it was the wrong sequence number.
-		// It is the caller's responsibility to rebuild the transaction
-		// with the correct sequence number.
-		return nil, sdkerrors.ErrWrongSequence
 	}
 
 	// TODO: maybe we need to check if the node has tx indexing enabled?
@@ -128,47 +133,4 @@ func mkTxResult(txDecoder sdk.TxDecoder, resTx *ctypes.ResultTx) (*sdk.TxRespons
 // deprecating (StdTxConfig support)
 type intoAny interface {
 	AsAny() *codectypes.Any
-}
-
-// CheckTendermintError checks if the error returned from BroadcastTx is a
-// Tendermint error that is returned before the tx is submitted due to
-// precondition checks that failed. If an Tendermint error is detected, this
-// function returns the correct code back in TxResponse.
-//
-// TODO: Avoid brittle string matching in favor of error matching. This requires
-// a change to Tendermint's RPCError type to allow retrieval or matching against
-// a concrete error type.
-func CheckTendermintError(err error, tx tmtypes.Tx) *sdk.TxResponse {
-	if err == nil {
-		return nil
-	}
-
-	errStr := strings.ToLower(err.Error())
-	txHash := fmt.Sprintf("%X", tx.Hash())
-
-	switch {
-	case strings.Contains(errStr, strings.ToLower(mempool.ErrTxInCache.Error())):
-		return &sdk.TxResponse{
-			Code:      sdkerrors.ErrTxInMempoolCache.ABCICode(),
-			Codespace: sdkerrors.ErrTxInMempoolCache.Codespace(),
-			TxHash:    txHash,
-		}
-
-	case strings.Contains(errStr, "mempool is full"):
-		return &sdk.TxResponse{
-			Code:      sdkerrors.ErrMempoolIsFull.ABCICode(),
-			Codespace: sdkerrors.ErrMempoolIsFull.Codespace(),
-			TxHash:    txHash,
-		}
-
-	case strings.Contains(errStr, "tx too large"):
-		return &sdk.TxResponse{
-			Code:      sdkerrors.ErrTxTooLarge.ABCICode(),
-			Codespace: sdkerrors.ErrTxTooLarge.Codespace(),
-			TxHash:    txHash,
-		}
-	default:
-		// More error debugging here!!
-		return nil
-	}
 }

@@ -10,9 +10,9 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/capability"
 	"github.com/cosmos/cosmos-sdk/x/crisis"
 	"github.com/cosmos/cosmos-sdk/x/distribution"
-	distrclient "github.com/cosmos/cosmos-sdk/x/distribution/client"
 	feegrant "github.com/cosmos/cosmos-sdk/x/feegrant/module"
 	"github.com/cosmos/cosmos-sdk/x/gov"
+	"github.com/cosmos/cosmos-sdk/x/gov/client"
 	"github.com/cosmos/cosmos-sdk/x/mint"
 	"github.com/cosmos/cosmos-sdk/x/params"
 	paramsclient "github.com/cosmos/cosmos-sdk/x/params/client"
@@ -20,8 +20,8 @@ import (
 	"github.com/cosmos/cosmos-sdk/x/staking"
 	"github.com/cosmos/cosmos-sdk/x/upgrade"
 	upgradeclient "github.com/cosmos/cosmos-sdk/x/upgrade/client"
-	"github.com/cosmos/ibc-go/v3/modules/apps/transfer"
-	ibc "github.com/cosmos/ibc-go/v3/modules/core"
+	"github.com/cosmos/ibc-go/v7/modules/apps/transfer"
+	ibc "github.com/cosmos/ibc-go/v7/modules/core"
 )
 
 var (
@@ -33,7 +33,11 @@ var (
 		// TODO: add osmosis governance proposal types here
 		// TODO: add other proposal types here
 		gov.NewAppModuleBasic(
-			paramsclient.ProposalHandler, distrclient.ProposalHandler, upgradeclient.ProposalHandler, upgradeclient.CancelProposalHandler,
+			[]client.ProposalHandler{
+				paramsclient.ProposalHandler,
+				upgradeclient.LegacyProposalHandler,
+				upgradeclient.LegacyCancelProposalHandler,
+			},
 		),
 		crisis.AppModuleBasic{},
 		distribution.AppModuleBasic{},
@@ -57,13 +61,16 @@ type ChainClientConfig struct {
 	KeyringBackend string                  `json:"keyring-backend" yaml:"keyring-backend"`
 	GasAdjustment  float64                 `json:"gas-adjustment" yaml:"gas-adjustment"`
 	GasPrices      string                  `json:"gas-prices" yaml:"gas-prices"`
+	MinGasAmount   uint64                  `json:"min-gas-amount" yaml:"min-gas-amount"`
 	KeyDirectory   string                  `json:"key-directory" yaml:"key-directory"`
 	Debug          bool                    `json:"debug" yaml:"debug"`
 	Timeout        string                  `json:"timeout" yaml:"timeout"`
 	BlockTimeout   string                  `json:"block-timeout" yaml:"block-timeout"`
 	OutputFormat   string                  `json:"output-format" yaml:"output-format"`
 	SignModeStr    string                  `json:"sign-mode" yaml:"sign-mode"`
+	ExtraCodecs    []string                `json:"extra-codecs" yaml:"extra-codecs"`
 	Modules        []module.AppModuleBasic `json:"-" yaml:"-"`
+	Slip44         int                     `json:"slip44" yaml:"slip44"`
 }
 
 func (ccc *ChainClientConfig) Validate() error {
@@ -88,6 +95,7 @@ func GetCosmosHubConfig(keyHome string, debug bool) *ChainClientConfig {
 		KeyringBackend: "test",
 		GasAdjustment:  1.2,
 		GasPrices:      "0.01uatom",
+		MinGasAmount:   0,
 		KeyDirectory:   keyHome,
 		Debug:          debug,
 		Timeout:        "20s",
@@ -106,6 +114,7 @@ func GetOsmosisConfig(keyHome string, debug bool) *ChainClientConfig {
 		KeyringBackend: "test",
 		GasAdjustment:  1.2,
 		GasPrices:      "0.01uosmo",
+		MinGasAmount:   0,
 		KeyDirectory:   keyHome,
 		Debug:          debug,
 		Timeout:        "20s",

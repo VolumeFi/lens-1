@@ -90,7 +90,6 @@ $ %s k a osmo_key --chain osmosis`, appName, appName, appName)),
 		},
 	}
 	cmd.Flags().Uint32(flagCoinType, defaultCoinType, "coin type number for HD derivation")
-
 	return cmd
 }
 
@@ -357,7 +356,7 @@ $ %s keys export ibc-0 testkey
 $ %s k e ibc-2 testkey`, appName, appName)),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cl := a.Config.GetDefaultClient()
-			keyName := args[1]
+			keyName := args[0]
 			if !cl.KeyExists(keyName) {
 				return errKeyDoesntExist(keyName)
 			}

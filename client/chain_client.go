@@ -11,12 +11,14 @@ import (
 	"github.com/avast/retry-go/v4"
 	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	sdk "github.com/cosmos/cosmos-sdk/types"
-	"github.com/gogo/protobuf/proto"
-	provtypes "github.com/tendermint/tendermint/light/provider"
-	prov "github.com/tendermint/tendermint/light/provider/http"
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
-	rpchttp "github.com/tendermint/tendermint/rpc/client/http"
-	libclient "github.com/tendermint/tendermint/rpc/jsonrpc/client"
+	"github.com/strangelove-ventures/lens/client/codecs/ethermint"
+
+	"github.com/cosmos/gogoproto/proto"
+	provtypes "github.com/cometbft/cometbft/light/provider"
+	prov "github.com/cometbft/cometbft/light/provider/http"
+	rpcclient "github.com/cometbft/cometbft/rpc/client"
+	rpchttp "github.com/cometbft/cometbft/rpc/client/http"
+	libclient "github.com/cometbft/cometbft/rpc/jsonrpc/client"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v3"
 )
@@ -49,11 +51,11 @@ func NewChainClient(log *zap.Logger, ccc *ChainClientConfig, homepath string, in
 	cc := &ChainClient{
 		log: log,
 
-		KeyringOptions: kro,
+		KeyringOptions: append([]keyring.Option{ethermint.EthSecp256k1Option()}, kro...),
 		Config:         ccc,
 		Input:          input,
 		Output:         output,
-		Codec:          MakeCodec(ccc.Modules),
+		Codec:          MakeCodec(ccc.Modules, ccc.ExtraCodecs),
 	}
 	if err := cc.Init(); err != nil {
 		return nil, err
@@ -63,7 +65,7 @@ func NewChainClient(log *zap.Logger, ccc *ChainClientConfig, homepath string, in
 
 func (cc *ChainClient) Init() error {
 	// TODO: test key directory and return error if not created
-	keybase, err := keyring.New(cc.Config.ChainID, cc.Config.KeyringBackend, cc.Config.KeyDirectory, cc.Input, cc.KeyringOptions...)
+	keybase, err := keyring.New(cc.Config.ChainID, cc.Config.KeyringBackend, cc.Config.KeyDirectory, cc.Input, cc.Codec.Marshaler, cc.KeyringOptions...)
 	if err != nil {
 		return err
 	}
@@ -95,7 +97,7 @@ func (cc *ChainClient) GetKeyAddress() (sdk.AccAddress, error) {
 	if err != nil {
 		return nil, err
 	}
-	return info.GetAddress(), nil
+	return info.GetAddress()
 }
 
 func NewRPCClient(addr string, timeout time.Duration) (*rpchttp.HTTP, error) {

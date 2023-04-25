@@ -6,16 +6,18 @@ import (
 	"strings"
 
 	"github.com/avast/retry-go/v4"
+	abci "github.com/cometbft/cometbft/abci/types"
+	rpcclient "github.com/cometbft/cometbft/rpc/client"
 	"github.com/cosmos/cosmos-sdk/client"
 	"github.com/cosmos/cosmos-sdk/client/tx"
+	"github.com/cosmos/cosmos-sdk/crypto/keyring"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
+	cryptotypes "github.com/cosmos/cosmos-sdk/crypto/types"
 	"github.com/cosmos/cosmos-sdk/store/rootmulti"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	sdkerrors "github.com/cosmos/cosmos-sdk/types/errors"
 	txtypes "github.com/cosmos/cosmos-sdk/types/tx"
 	"github.com/cosmos/cosmos-sdk/types/tx/signing"
-	abci "github.com/tendermint/tendermint/abci/types"
-	rpcclient "github.com/tendermint/tendermint/rpc/client"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
@@ -42,8 +44,8 @@ func (ccc *ChainClientConfig) SignMode() signing.SignMode {
 	return signMode
 }
 
-func (cc *ChainClient) SendMsg(ctx context.Context, msg sdk.Msg) (*sdk.TxResponse, error) {
-	return cc.SendMsgs(ctx, []sdk.Msg{msg})
+func (cc *ChainClient) SendMsg(ctx context.Context, msg sdk.Msg, memo string) (*sdk.TxResponse, error) {
+	return cc.SendMsgs(ctx, []sdk.Msg{msg}, memo)
 }
 
 // SendMsgs wraps the msgs in a StdTx, signs and sends it. An error is returned if there
@@ -51,7 +53,7 @@ func (cc *ChainClient) SendMsg(ctx context.Context, msg sdk.Msg) (*sdk.TxRespons
 // not return an error. If a transaction is successfully sent, the result of the execution
 // of that transaction will be logged. A boolean indicating if a transaction was successfully
 // sent and executed successfully is returned.
-func (cc *ChainClient) SendMsgs(ctx context.Context, msgs []sdk.Msg) (*sdk.TxResponse, error) {
+func (cc *ChainClient) SendMsgs(ctx context.Context, msgs []sdk.Msg, memo string) (*sdk.TxResponse, error) {
 	txf, err := cc.PrepareFactory(cc.TxFactory())
 	if err != nil {
 		return nil, err
@@ -65,11 +67,15 @@ func (cc *ChainClient) SendMsgs(ctx context.Context, msgs []sdk.Msg) (*sdk.TxRes
 		return nil, err
 	}
 
+	if memo != "" {
+		txf = txf.WithMemo(memo)
+	}
+
 	// Set the gas amount on the transaction factory
 	txf = txf.WithGas(adjusted)
 
 	// Build the transaction builder
-	txb, err := tx.BuildUnsignedTx(txf, msgs...)
+	txb, err := txf.BuildUnsignedTx(msgs...)
 	if err != nil {
 		return nil, err
 	}
@@ -171,14 +177,23 @@ func (cc *ChainClient) PrepareFactory(txf tx.Factory) (tx.Factory, error) {
 		}
 	}
 
+	if cc.Config.MinGasAmount != 0 {
+		txf = txf.WithGas(cc.Config.MinGasAmount)
+	}
+
 	return txf, nil
 }
 
 func (cc *ChainClient) CalculateGas(ctx context.Context, txf tx.Factory, msgs ...sdk.Msg) (txtypes.SimulateResponse, uint64, error) {
+	keyInfo, err := cc.Keybase.Key(cc.Config.Key)
+	if err != nil {
+		return txtypes.SimulateResponse{}, 0, err
+	}
+
 	var txBytes []byte
 	if err := retry.Do(func() error {
 		var err error
-		txBytes, err = BuildSimTx(txf, msgs...)
+		txBytes, err = BuildSimTx(keyInfo, txf, msgs...)
 		if err != nil {
 			return err
 		}
@@ -276,8 +291,15 @@ type protoTxProvider interface {
 
 // BuildSimTx creates an unsigned tx with an empty single signature and returns
 // the encoded transaction or an error if the unsigned transaction cannot be built.
-func BuildSimTx(txf tx.Factory, msgs ...sdk.Msg) ([]byte, error) {
-	txb, err := tx.BuildUnsignedTx(txf, msgs...)
+func BuildSimTx(info *keyring.Record, txf tx.Factory, msgs ...sdk.Msg) ([]byte, error) {
+	txb, err := txf.BuildUnsignedTx(msgs...)
+	if err != nil {
+		return nil, err
+	}
+
+	var pk cryptotypes.PubKey = &secp256k1.PubKey{} // use default public key type
+
+	pk, err = info.GetPubKey()
 	if err != nil {
 		return nil, err
 	}
@@ -285,7 +307,7 @@ func BuildSimTx(txf tx.Factory, msgs ...sdk.Msg) ([]byte, error) {
 	// Create an empty signature literal as the ante handler will populate with a
 	// sentinel pubkey.
 	sig := signing.SignatureV2{
-		PubKey: &secp256k1.PubKey{},
+		PubKey: pk,
 		Data: &signing.SingleSignatureData{
 			SignMode: txf.SignMode(),
 		},

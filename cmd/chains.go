@@ -61,28 +61,9 @@ func cmdChainsAdd(a *appState) *cobra.Command {
 		Short:   "add configuration for a chain or a number of chains from the chain registry",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			registry := chain_registry.DefaultChainRegistry(a.Log)
-			allChains, err := registry.ListChains(cmd.Context())
-			if err != nil {
-				return err
-			}
+			overwriteConfig := false
 
 			for _, chain := range args {
-				found := false
-				for _, possibleChain := range allChains {
-					if chain == possibleChain {
-						found = true
-					}
-				}
-
-				if !found {
-					a.Log.Info(
-						"Unable to find chain",
-						zap.String("name", chain),
-						zap.String("url", registry.SourceLink()),
-					)
-					continue
-				}
-
 				chainInfo, err := registry.GetChain(cmd.Context(), chain)
 				if err != nil {
 					a.Log.Info(
@@ -102,11 +83,14 @@ func cmdChainsAdd(a *appState) *cobra.Command {
 					)
 					continue
 				}
-
+				overwriteConfig = true
 				a.Config.Chains[chain] = chainConfig
 			}
-
-			return a.OverwriteConfig(a.Config)
+			if overwriteConfig {
+				return a.OverwriteConfig(a.Config)
+			} else {
+				return nil
+			}
 		},
 	}
 	return cmd
@@ -168,6 +152,12 @@ func cmdChainsEdit(a *appState) *cobra.Command {
 				a.Config.Chains[args[0]].GasAdjustment = fl
 			case "gas-prices":
 				a.Config.Chains[args[0]].GasPrices = args[2]
+			case "min-gas-amount":
+				ga, err := strconv.ParseUint(args[2], 10, 64)
+				if err != nil {
+					return err
+				}
+				a.Config.Chains[args[0]].MinGasAmount = ga
 			case "debug":
 				b, err := strconv.ParseBool(args[2])
 				if err != nil {
@@ -177,7 +167,7 @@ func cmdChainsEdit(a *appState) *cobra.Command {
 			case "timeout":
 				a.Config.Chains[args[0]].Timeout = args[2]
 			default:
-				return fmt.Errorf("unknown key %s, try 'key', 'chain-id', 'rpc-addr', 'grpc-addr', 'account-prefix', 'gas-adjustment', 'gas-prices', 'debug', or 'timeout'", args[1])
+				return fmt.Errorf("unknown key %s, try 'key', 'chain-id', 'rpc-addr', 'grpc-addr', 'account-prefix', 'gas-adjustment', 'gas-prices', 'min-gas-amount', 'debug', or 'timeout'", args[1])
 			}
 			return a.OverwriteConfig(a.Config)
 		},
