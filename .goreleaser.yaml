@@ -11,11 +11,9 @@ builds:
       - -X github.com/strangelove-ventures/lens/cmd.Version={{ .Tag }}
       - -X github.com/strangelove-ventures/lens/cmd.Commit={{ .FullCommit }}
     goos:
-      - darwin
       - linux
     goarch:
       - amd64
-      - arm64
 
 checksum:
   name_template: SHA256SUMS-{{.Version}}.txt
